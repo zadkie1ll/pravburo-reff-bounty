@@ -1,0 +1,11 @@
+name: pravburo-reff-bounty
+
+services:
+  pravburo-reff-bounty:
+    build: .
+    env_file: .env
+    ports:
+      - "127.0.0.1:${BOUNTY_PORT:-8041}:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

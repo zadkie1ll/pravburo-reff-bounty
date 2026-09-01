@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <title>{% block title %}Правбюро{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
+  </head>
+  <body>
+    {% if preview_mode %}
+    <div class="preview-banner">Режим предпросмотра · используются только тестовые данные</div>
+    {% endif %}
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Правбюро — главная">
+        <span class="brand-mark">ПБ</span>
+        <span>
+          <strong>Правбюро</strong>
+          <small>Реферальная платформа</small>
+        </span>
+      </a>
+      <span class="stage-badge">Этап 1</span>
+    </header>
+    <main class="page-shell">{% block content %}{% endblock %}</main>
+    <footer>Правбюро · Новый личный кабинет</footer>
+    {% if preview_mode %}
+    <script>
+      document.querySelectorAll("form").forEach(function (form) {
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          window.alert("Это предпросмотр верстки. Данные не отправляются.");
+        });
+      });
+    </script>
+    {% endif %}
+  </body>
+</html>
