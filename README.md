@@ -25,6 +25,9 @@ git submodule update --init --recursive
 `SESSION_SECRET` должен совпадать с `pravburo-reff-site`, чтобы административный
 маршрут принимал ту же cookie-сессию.
 
+На production сервис работает в host network и слушает только
+`127.0.0.1:8041`.
+
 ```bash
 cp .env.example .env
 uv sync

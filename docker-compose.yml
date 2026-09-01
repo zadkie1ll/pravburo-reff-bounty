@@ -4,8 +4,6 @@ services:
   pravburo-reff-bounty:
     build: .
     env_file: .env
-    ports:
-      - "127.0.0.1:${BOUNTY_PORT:-8041}:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    network_mode: host
+    command: ["uv", "run", "--no-sync", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", "${BOUNTY_PORT:-8041}"]
     restart: unless-stopped
