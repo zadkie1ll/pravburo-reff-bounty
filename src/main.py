@@ -26,7 +26,11 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.app_env == "production",
 )
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+app.mount(
+    "/admin/static",
+    StaticFiles(directory=Path(__file__).parent / "static"),
+    name="bounty_static",
+)
 app.include_router(router)
 
 
