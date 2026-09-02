@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 from pravburo_ref_common.database import get_session
+from pravburo_ref_common.models import RewardType
 
 from src import routes
 from src.config import get_settings
@@ -24,9 +25,13 @@ def test_internal_reward_endpoint_returns_idempotency_result(monkeypatch) -> Non
     async def fake_session():
         yield SimpleNamespace()
 
-    async def fake_create_reward_once(session, deal_id, application_id, agent_id):
+    async def fake_create_reward_once(
+        session, deal_id, application_id, agent_id, reward_type, amount
+    ):
         del session
         assert (deal_id, application_id, agent_id) == ("42", 1, 2)
+        assert reward_type == RewardType.MAIN
+        assert amount is None
         return SimpleNamespace(id=100), False
 
     app.dependency_overrides[get_session] = fake_session

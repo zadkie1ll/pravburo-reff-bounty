@@ -29,6 +29,8 @@ async def create_reward(payload: RewardCreate, session: Session) -> dict[str, ob
             payload.deal_id,
             payload.application_id,
             payload.agent_id,
+            payload.reward_type,
+            payload.amount,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
