@@ -31,7 +31,13 @@ async def create_reward_once(
         return reward, True
     except IntegrityError:
         await session.rollback()
-        existing = await session.scalar(select(Reward).where(Reward.deal_id == deal_id))
+        existing = await session.scalar(
+            select(Reward).where(
+                Reward.deal_id == deal_id,
+                Reward.reward_type == reward_type,
+                Reward.agent_id == agent_id,
+            )
+        )
         if existing is None:
             raise
         return existing, False
