@@ -7,11 +7,19 @@ from pravburo_ref_common.models import (
     NetworkOverrideRate,
     ReferralApplication,
     Reward,
+    RewardStageRate,
     RewardType,
 )
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+
+STAGE_RATE_TYPES = {RewardType.ADVANCE, RewardType.MAIN}
+
+
+async def get_stage_rate_amount(session: AsyncSession, reward_type: RewardType) -> Decimal | None:
+    rate = await session.get(RewardStageRate, reward_type)
+    return rate.amount if rate is not None else None
 
 
 async def _max_override_levels(session: AsyncSession, agent_id: int) -> int:
@@ -74,6 +82,8 @@ async def create_reward_once(
     application = await session.get(ReferralApplication, application_id)
     if application is None or application.agent_id != agent_id:
         raise ValueError("Referral attribution not found")
+    if reward_type in STAGE_RATE_TYPES:
+        amount = await get_stage_rate_amount(session, reward_type)
     reward = Reward(
         deal_id=deal_id,
         application_id=application_id,

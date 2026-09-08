@@ -2,11 +2,24 @@ import asyncio
 import uuid
 from decimal import Decimal
 
-from pravburo_ref_common.database import session_factory
+from pravburo_ref_common.database import engine, session_factory
 from pravburo_ref_common.models import Agent, ReferralApplication, Reward, RewardType
 from sqlalchemy import delete
 
 from src.service import create_reward_once
+
+
+def _run(coro) -> None:
+    async def with_dispose() -> None:
+        try:
+            await coro
+        finally:
+            # Loop-bound pooled connections must be disposed inside the same
+            # loop that created them, before asyncio.run() closes it - see
+            # test_override.py's identical helper for the full rationale.
+            await engine.dispose()
+
+    asyncio.run(with_dispose())
 
 
 def test_create_reward_once_is_idempotent_per_deal_and_type_and_agent() -> None:
@@ -70,4 +83,57 @@ def test_create_reward_once_is_idempotent_per_deal_and_type_and_agent() -> None:
                 await session.execute(delete(Agent).where(Agent.id == agent_id))
                 await session.commit()
 
-    asyncio.run(scenario())
+    _run(scenario())
+
+
+def test_advance_and_main_amount_come_from_configured_stage_rates() -> None:
+    """ADVANCE/MAIN amounts are the single source of truth in RewardStageRate,
+    admin-editable at /admin/reward-rates - any amount the caller passes for
+    these two types is ignored and overridden by the configured rate.
+    """
+
+    async def scenario() -> None:
+        async with session_factory() as session:
+            agent = Agent(
+                email=f"{uuid.uuid4()}@example.test",
+                phone_normalized=f"+7999{uuid.uuid4().int % 10**7:07d}",
+            )
+            session.add(agent)
+            await session.flush()
+            application = ReferralApplication(
+                agent_id=agent.id,
+                full_name="Тест Тестов",
+                phone_normalized=f"+7998{uuid.uuid4().int % 10**7:07d}",
+            )
+            session.add(application)
+            await session.commit()
+            agent_id, application_id = agent.id, application.id
+
+        deal_id = str(uuid.uuid4())
+        try:
+            async with session_factory() as session:
+                advance, _ = await create_reward_once(
+                    session,
+                    deal_id,
+                    application_id,
+                    agent_id,
+                    RewardType.ADVANCE,
+                    Decimal("999999.00"),
+                )
+            assert advance.amount == Decimal("3000.00")
+
+            async with session_factory() as session:
+                main, _ = await create_reward_once(
+                    session, deal_id, application_id, agent_id, RewardType.MAIN
+                )
+            assert main.amount == Decimal("10000.00")
+        finally:
+            async with session_factory() as session:
+                await session.execute(delete(Reward).where(Reward.deal_id == deal_id))
+                await session.execute(
+                    delete(ReferralApplication).where(ReferralApplication.id == application_id)
+                )
+                await session.execute(delete(Agent).where(Agent.id == agent_id))
+                await session.commit()
+
+    _run(scenario())

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 
@@ -7,14 +8,20 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pravburo_ref_common.contracts import RewardCreate
 from pravburo_ref_common.database import get_session
-from pravburo_ref_common.models import ReferralApplication, Reward, RewardStatus
+from pravburo_ref_common.models import (
+    ReferralApplication,
+    Reward,
+    RewardStageRate,
+    RewardStatus,
+    RewardType,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import CurrentAdmin
 from src.internal_auth import require_internal_token
 from src.security import csrf_token, valid_csrf
-from src.service import create_reward_once
+from src.service import create_reward_once, get_stage_rate_amount
 
 router = APIRouter(tags=["bounty"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -90,3 +97,50 @@ async def decide_reward(
     reward.decided_by_agent_id = admin.id
     await session.commit()
     return RedirectResponse("/admin/rewards", status_code=303)
+
+
+@router.get("/admin/reward-rates", response_class=HTMLResponse)
+async def reward_rates_page(
+    request: Request, admin: CurrentAdmin, session: Session, error: str = ""
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_reward_rates.html",
+        context={
+            "admin": admin,
+            "advance_amount": await get_stage_rate_amount(session, RewardType.ADVANCE),
+            "main_amount": await get_stage_rate_amount(session, RewardType.MAIN),
+            "csrf_token": csrf_token(request.session),
+            "error": error,
+        },
+    )
+
+
+@router.post("/admin/reward-rates")
+async def reward_rates_submit(
+    request: Request,
+    admin: CurrentAdmin,
+    session: Session,
+    amount_advance: Annotated[str, Form()],
+    amount_main: Annotated[str, Form()],
+    csrf: Annotated[str, Form()] = "",
+):
+    if not valid_csrf(request.session, csrf):
+        return await reward_rates_page(request, admin, session, error="Обновите страницу")
+    try:
+        new_values = {
+            RewardType.ADVANCE: Decimal(amount_advance),
+            RewardType.MAIN: Decimal(amount_main),
+        }
+    except InvalidOperation:
+        return await reward_rates_page(request, admin, session, error="Укажите корректную сумму")
+    if any(value < 0 for value in new_values.values()):
+        return await reward_rates_page(
+            request, admin, session, error="Сумма не может быть отрицательной"
+        )
+    for reward_type, amount in new_values.items():
+        rate = await session.get(RewardStageRate, reward_type)
+        if rate is not None:
+            rate.amount = amount
+    await session.commit()
+    return RedirectResponse("/admin/reward-rates", status_code=303)

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Суммы аванса и основной выплаты · Правбюро{% endblock %}
+{% block content %}
+<section class="card"><p class="eyebrow">Администратор</p><h1>Суммы аванса и основной выплаты</h1>
+<p>Аванс начисляется партнёру при переходе сделки на этап «Подан», основная выплата — при переходе на этап «Завершен». Фиксированная сумма для всех сделок.</p>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+<form method="post" action="/admin/reward-rates"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+<label>Аванс (при подписании договора)<input type="number" step="0.01" min="0" name="amount_advance" value="{{ advance_amount }}" required></label>
+<label>Основная выплата (при оплате депозита)<input type="number" step="0.01" min="0" name="amount_main" value="{{ main_amount }}" required></label>
+<button class="button button-spaced" type="submit">Сохранить</button></form>
+<p style="margin-top: 20px"><a href="/admin/rewards">← Начисления</a></p>
+</section>{% endblock %}
