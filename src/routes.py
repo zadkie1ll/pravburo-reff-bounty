@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -22,10 +23,25 @@ from src.dependencies import CurrentAdmin
 from src.internal_auth import require_internal_token
 from src.security import csrf_token, valid_csrf
 from src.service import create_reward_once, get_stage_rate_amount
+from src.site_client import SiteClient
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["bounty"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 Session = Annotated[AsyncSession, Depends(get_session)]
+
+NOTIFIABLE_REWARD_TYPES = {RewardType.ADVANCE, RewardType.MAIN}
+
+# Причины отказа по начислению: админ выбирает из списка, а не пишет текст сам.
+# Выбранный текст сохраняется в Reward.rejection_reason и показывается партнёру.
+REJECTION_REASONS = (
+    "Клиент отказался от услуг",
+    "Не удалось связаться с клиентом",
+    "Клиент уже есть в базе компании",
+    "Ситуация клиента не подходит под условия программы",
+    "Договор не заключён",
+    "Другая причина, уточните в поддержке",
+)
 
 
 @router.post("/internal/rewards", dependencies=[Depends(require_internal_token)])
@@ -41,6 +57,15 @@ async def create_reward(payload: RewardCreate, session: Session) -> dict[str, ob
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if created and reward.reward_type in NOTIFIABLE_REWARD_TYPES:
+        try:
+            await SiteClient().notify_reward(
+                agent_id=reward.agent_id, reward_type=reward.reward_type, amount=reward.amount
+            )
+        except Exception:
+            logger.warning("Failed to notify site about new reward: reward_id=%s", reward.id)
+
     return {"status": "created" if created else "duplicate", "reward_id": reward.id}
 
 
@@ -66,6 +91,7 @@ async def rewards_page(request: Request, admin: CurrentAdmin, session: Session) 
                 }
                 for reward, application in rows
             ],
+            "rejection_reasons": REJECTION_REASONS,
             "csrf_token": csrf_token(request.session),
         },
     )
@@ -88,7 +114,7 @@ async def decide_reward(
         return RedirectResponse("/admin/rewards", status_code=303)
     if decision == "approve":
         reward.status = RewardStatus.APPROVED
-    elif decision == "reject" and reason.strip():
+    elif decision == "reject" and reason.strip() in REJECTION_REASONS:
         reward.status = RewardStatus.REJECTED
         reward.rejection_reason = reason.strip()
     else:
