@@ -121,6 +121,7 @@ p { line-height: 1.65; }
 .auth-card form, .lead-form, .rate-form { display: grid; gap: 18px; margin-top: 24px; }
 .auth-card > p:last-child { margin-top: 24px; text-align: center; }
 .button-spaced { margin-top: 20px; }
+.rate-form .button { justify-self: start; }
 label { display: grid; gap: 7px; color: #566779; font-family: "TT Norms Medium", sans-serif; font-size: 14px; }
 input, textarea, select { width: 100%; min-height: 48px; padding: 13px 15px; border: 1px solid #cfdbe5; border-radius: 12px; outline: none; color: var(--ink); background: rgba(255, 255, 255, .94); font: 400 16px/1.35 "SF Pro Display", sans-serif; transition: border-color .18s ease, box-shadow .18s ease; }
 textarea { min-height: 96px; resize: vertical; }
