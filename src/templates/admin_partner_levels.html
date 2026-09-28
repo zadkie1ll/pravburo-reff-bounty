@@ -4,7 +4,7 @@
 <section class="card"><p class="eyebrow">Администратор</p><h1>Уровни партнёров</h1>
 <p>Уровень партнёра за месяц считается автоматически 1-го числа следующего месяца по числу заключённых договоров. Здесь можно посмотреть историю и поправить уровень вручную, если автоматика ошиблась — ручная правка защищена от перезаписи следующим автоматическим расчётом.</p>
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
-<form method="get" action="/admin/partner-levels">
+<form class="rate-form" method="get" action="/admin/partner-levels">
 <label>Партнёр (имя или почта)<input type="text" name="q" value="{{ q }}" placeholder="Например, Иванов или ivan@example.com"></label>
 <button class="button" type="submit">Найти</button>
 </form>
@@ -66,7 +66,7 @@
 </div>
 
 <h3 style="margin-top: 20px">Задать уровень вручную за произвольный месяц</h3>
-<form method="post" action="/admin/partner-levels/set">
+<form class="rate-form" method="post" action="/admin/partner-levels/set">
 <input type="hidden" name="csrf" value="{{ csrf_token }}">
 <input type="hidden" name="agent_id" value="{{ selected_agent.id }}">
 <label>Год<input type="number" name="year" value="{{ current_year }}" min="2020" max="2100" required></label>
@@ -76,7 +76,7 @@
 <option value="{{ level }}">{{ level_labels[level] }}</option>
 {% endfor %}
 </select></label>
-<button class="button button-spaced" type="submit">Сохранить</button>
+<button class="button" type="submit">Сохранить</button>
 </form>
 </section>
 {% endif %}
