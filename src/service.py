@@ -1,10 +1,13 @@
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from pravburo_ref_common.models import (
     Agent,
     AgentCredential,
     AgentIdentity,
     NetworkOverrideRate,
+    PartnerLevel,
+    PartnerLevelMonth,
     ReferralApplication,
     Reward,
     RewardStageRate,
@@ -16,10 +19,64 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 STAGE_RATE_TYPES = {RewardType.ADVANCE, RewardType.MAIN}
 
+MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 
-async def get_stage_rate_amount(session: AsyncSession, reward_type: RewardType) -> Decimal | None:
-    rate = await session.get(RewardStageRate, reward_type)
+# Advance is a flat 3000 regardless of partner level (see reward_stage_rates'
+# docstring) - all 4 level rows hold the same amount, so any one of them works
+# as the lookup key.
+ADVANCE_LOOKUP_LEVEL = PartnerLevel.START
+
+
+async def get_stage_rate_amount(
+    session: AsyncSession, reward_type: RewardType, level: PartnerLevel
+) -> Decimal | None:
+    rate = await session.get(RewardStageRate, (reward_type, level))
     return rate.amount if rate is not None else None
+
+
+async def _origin_month(
+    session: AsyncSession, deal_id: str, agent_id: int
+) -> tuple[int, int] | None:
+    """The (year, month) the contract for this deal was signed in, taken from
+    the sibling ADVANCE reward's created_at - MAIN's amount depends on the
+    partner's level for that month, not the month MAIN itself is created in
+    (the deposit can be paid much later).
+    """
+    signed_at = await session.scalar(
+        select(Reward.created_at).where(
+            Reward.deal_id == deal_id,
+            Reward.agent_id == agent_id,
+            Reward.reward_type == RewardType.ADVANCE,
+        )
+    )
+    if signed_at is None:
+        return None
+    moscow = signed_at.astimezone(MOSCOW_TZ)
+    return moscow.year, moscow.month
+
+
+async def _resolve_stage_amount(
+    session: AsyncSession, reward_type: RewardType, deal_id: str, agent_id: int
+) -> Decimal | None:
+    if reward_type == RewardType.ADVANCE:
+        return await get_stage_rate_amount(session, RewardType.ADVANCE, ADVANCE_LOOKUP_LEVEL)
+
+    origin = await _origin_month(session, deal_id, agent_id)
+    if origin is None:
+        return None
+    year, month = origin
+    level_month = await session.scalar(
+        select(PartnerLevelMonth).where(
+            PartnerLevelMonth.agent_id == agent_id,
+            PartnerLevelMonth.year == year,
+            PartnerLevelMonth.month == month,
+        )
+    )
+    if level_month is None:
+        # Origin month isn't closed yet (see pravburo-reff-site's
+        # run_monthly_level_close) - the amount is filled in once it is.
+        return None
+    return await get_stage_rate_amount(session, RewardType.MAIN, level_month.level)
 
 
 async def _max_override_levels(session: AsyncSession, agent_id: int) -> int:
@@ -83,7 +140,7 @@ async def create_reward_once(
     if application is None or application.agent_id != agent_id:
         raise ValueError("Referral attribution not found")
     if reward_type in STAGE_RATE_TYPES:
-        amount = await get_stage_rate_amount(session, reward_type)
+        amount = await _resolve_stage_amount(session, reward_type, deal_id, agent_id)
     reward = Reward(
         deal_id=deal_id,
         application_id=application_id,

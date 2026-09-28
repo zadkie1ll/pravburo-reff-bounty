@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     app_debug: bool = False
     session_secret: str = "development-only-change-me"
     internal_service_token: str = "development-internal-token"
+    site_service_url: str = "http://127.0.0.1:8040"
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

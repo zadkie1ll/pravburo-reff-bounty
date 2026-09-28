@@ -1,9 +1,18 @@
 import asyncio
 import uuid
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 from pravburo_ref_common.database import engine, session_factory
-from pravburo_ref_common.models import Agent, ReferralApplication, Reward, RewardType
+from pravburo_ref_common.models import (
+    Agent,
+    PartnerLevel,
+    PartnerLevelMonth,
+    ReferralApplication,
+    Reward,
+    RewardStageRate,
+    RewardType,
+)
 from sqlalchemy import delete
 
 from src.service import create_reward_once
@@ -86,10 +95,10 @@ def test_create_reward_once_is_idempotent_per_deal_and_type_and_agent() -> None:
     _run(scenario())
 
 
-def test_advance_and_main_amount_come_from_configured_stage_rates() -> None:
-    """ADVANCE/MAIN amounts are the single source of truth in RewardStageRate,
-    admin-editable at /admin/reward-rates - any amount the caller passes for
-    these two types is ignored and overridden by the configured rate.
+def test_advance_amount_comes_from_configured_stage_rate_regardless_of_level() -> None:
+    """ADVANCE is a flat sum - the single source of truth is RewardStageRate,
+    admin-editable at /admin/reward-rates - any amount the caller passes is
+    ignored and overridden by the configured rate.
     """
 
     async def scenario() -> None:
@@ -121,15 +130,116 @@ def test_advance_and_main_amount_come_from_configured_stage_rates() -> None:
                     Decimal("999999.00"),
                 )
             assert advance.amount == Decimal("3000.00")
+        finally:
+            async with session_factory() as session:
+                await session.execute(delete(Reward).where(Reward.deal_id == deal_id))
+                await session.execute(
+                    delete(ReferralApplication).where(ReferralApplication.id == application_id)
+                )
+                await session.execute(delete(Agent).where(Agent.id == agent_id))
+                await session.commit()
+
+    _run(scenario())
+
+
+def test_main_amount_is_null_while_its_origin_month_is_still_open() -> None:
+    """The main payout depends on the partner's FINAL level for the month
+    their contract was signed - unknowable until pravburo-reff-site's
+    run_monthly_level_close fixes it on the 1st of the next month. Until
+    then, MAIN is created with amount=NULL rather than guessing.
+    """
+
+    async def scenario() -> None:
+        async with session_factory() as session:
+            agent = Agent(
+                email=f"{uuid.uuid4()}@example.test",
+                phone_normalized=f"+7999{uuid.uuid4().int % 10**7:07d}",
+            )
+            session.add(agent)
+            await session.flush()
+            application = ReferralApplication(
+                agent_id=agent.id,
+                full_name="Тест Тестов",
+                phone_normalized=f"+7998{uuid.uuid4().int % 10**7:07d}",
+            )
+            session.add(application)
+            await session.commit()
+            agent_id, application_id = agent.id, application.id
+
+        deal_id = str(uuid.uuid4())
+        try:
+            async with session_factory() as session:
+                await create_reward_once(
+                    session, deal_id, application_id, agent_id, RewardType.ADVANCE
+                )
 
             async with session_factory() as session:
                 main, _ = await create_reward_once(
                     session, deal_id, application_id, agent_id, RewardType.MAIN
                 )
-            assert main.amount == Decimal("10000.00")
+            assert main.amount is None
         finally:
             async with session_factory() as session:
                 await session.execute(delete(Reward).where(Reward.deal_id == deal_id))
+                await session.execute(
+                    delete(ReferralApplication).where(ReferralApplication.id == application_id)
+                )
+                await session.execute(delete(Agent).where(Agent.id == agent_id))
+                await session.commit()
+
+    _run(scenario())
+
+
+def test_main_amount_uses_origin_months_fixed_level_once_closed() -> None:
+    async def scenario() -> None:
+        async with session_factory() as session:
+            agent = Agent(
+                email=f"{uuid.uuid4()}@example.test",
+                phone_normalized=f"+7999{uuid.uuid4().int % 10**7:07d}",
+            )
+            session.add(agent)
+            await session.flush()
+            application = ReferralApplication(
+                agent_id=agent.id,
+                full_name="Тест Тестов",
+                phone_normalized=f"+7998{uuid.uuid4().int % 10**7:07d}",
+            )
+            session.add(application)
+            await session.commit()
+            agent_id, application_id = agent.id, application.id
+
+        deal_id = str(uuid.uuid4())
+        try:
+            async with session_factory() as session:
+                advance, _ = await create_reward_once(
+                    session, deal_id, application_id, agent_id, RewardType.ADVANCE
+                )
+                origin_month = advance.created_at.astimezone(ZoneInfo("Europe/Moscow"))
+
+            async with session_factory() as session:
+                session.add(
+                    PartnerLevelMonth(
+                        agent_id=agent_id,
+                        year=origin_month.year,
+                        month=origin_month.month,
+                        contracts_count=4,
+                        level=PartnerLevel.PRO,
+                    )
+                )
+                await session.commit()
+
+            async with session_factory() as session:
+                main, _ = await create_reward_once(
+                    session, deal_id, application_id, agent_id, RewardType.MAIN
+                )
+                pro_rate = await session.get(RewardStageRate, (RewardType.MAIN, PartnerLevel.PRO))
+            assert main.amount == pro_rate.amount
+        finally:
+            async with session_factory() as session:
+                await session.execute(delete(Reward).where(Reward.deal_id == deal_id))
+                await session.execute(
+                    delete(PartnerLevelMonth).where(PartnerLevelMonth.agent_id == agent_id)
+                )
                 await session.execute(
                     delete(ReferralApplication).where(ReferralApplication.id == application_id)
                 )

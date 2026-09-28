@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from httpx import ASGITransport, AsyncClient
 from pravburo_ref_common.database import engine, session_factory
-from pravburo_ref_common.models import Agent, AgentRole, RewardStageRate, RewardType
+from pravburo_ref_common.models import Agent, AgentRole, PartnerLevel, RewardStageRate, RewardType
 
 from src.dependencies import require_admin
 from src.main import app
@@ -54,23 +54,49 @@ def test_reward_rates_submit_updates_amounts() -> None:
                 csrf = _csrf_from(page.text)
                 response = await client.post(
                     "/admin/reward-rates",
-                    data={"amount_advance": "3500", "amount_main": "12000", "csrf": csrf},
+                    data={
+                        "amount_advance": "3500",
+                        "amount_main_start": "13500",
+                        "amount_main_active": "15500",
+                        "amount_main_pro": "18500",
+                        "amount_main_expert": "20500",
+                        "csrf": csrf,
+                    },
                     follow_redirects=False,
                 )
             assert response.status_code == 303
 
             async with session_factory() as session:
-                advance = await session.get(RewardStageRate, RewardType.ADVANCE)
-                main = await session.get(RewardStageRate, RewardType.MAIN)
-                assert advance.amount == Decimal("3500.00")
-                assert main.amount == Decimal("12000.00")
+                for level in PartnerLevel:
+                    advance = await session.get(RewardStageRate, (RewardType.ADVANCE, level))
+                    assert advance.amount == Decimal("3500.00")
+                assert (
+                    await session.get(RewardStageRate, (RewardType.MAIN, PartnerLevel.START))
+                ).amount == Decimal("13500.00")
+                assert (
+                    await session.get(RewardStageRate, (RewardType.MAIN, PartnerLevel.ACTIVE))
+                ).amount == Decimal("15500.00")
+                assert (
+                    await session.get(RewardStageRate, (RewardType.MAIN, PartnerLevel.PRO))
+                ).amount == Decimal("18500.00")
+                assert (
+                    await session.get(RewardStageRate, (RewardType.MAIN, PartnerLevel.EXPERT))
+                ).amount == Decimal("20500.00")
         finally:
             app.dependency_overrides.pop(require_admin, None)
             async with session_factory() as session:
-                advance = await session.get(RewardStageRate, RewardType.ADVANCE)
-                main = await session.get(RewardStageRate, RewardType.MAIN)
-                advance.amount = Decimal("3000.00")
-                main.amount = Decimal("10000.00")
+                for level in PartnerLevel:
+                    advance = await session.get(RewardStageRate, (RewardType.ADVANCE, level))
+                    advance.amount = Decimal("3000.00")
+                main_defaults = {
+                    PartnerLevel.START: Decimal("13000.00"),
+                    PartnerLevel.ACTIVE: Decimal("15000.00"),
+                    PartnerLevel.PRO: Decimal("18000.00"),
+                    PartnerLevel.EXPERT: Decimal("20000.00"),
+                }
+                for level, default_amount in main_defaults.items():
+                    main = await session.get(RewardStageRate, (RewardType.MAIN, level))
+                    main.amount = default_amount
                 await session.commit()
 
     _run(scenario())

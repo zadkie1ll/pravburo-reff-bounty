@@ -10,19 +10,22 @@ from fastapi.templating import Jinja2Templates
 from pravburo_ref_common.contracts import RewardCreate
 from pravburo_ref_common.database import get_session
 from pravburo_ref_common.models import (
+    Agent,
+    PartnerLevel,
+    PartnerLevelMonth,
     ReferralApplication,
     Reward,
     RewardStageRate,
     RewardStatus,
     RewardType,
 )
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import CurrentAdmin
 from src.internal_auth import require_internal_token
 from src.security import csrf_token, valid_csrf
-from src.service import create_reward_once, get_stage_rate_amount
+from src.service import ADVANCE_LOOKUP_LEVEL, create_reward_once, get_stage_rate_amount
 from src.site_client import SiteClient
 
 logger = logging.getLogger(__name__)
@@ -125,17 +128,36 @@ async def decide_reward(
     return RedirectResponse("/admin/rewards", status_code=303)
 
 
+LEVEL_LABELS = {
+    PartnerLevel.START: "Старт",
+    PartnerLevel.ACTIVE: "Актив",
+    PartnerLevel.PRO: "Про",
+    PartnerLevel.EXPERT: "Эксперт",
+}
+
+
 @router.get("/admin/reward-rates", response_class=HTMLResponse)
 async def reward_rates_page(
     request: Request, admin: CurrentAdmin, session: Session, error: str = ""
 ) -> HTMLResponse:
+    main_amounts = [
+        {
+            "level": level,
+            "label": LEVEL_LABELS[level],
+            "field": f"amount_main_{level}",
+            "amount": await get_stage_rate_amount(session, RewardType.MAIN, level),
+        }
+        for level in PartnerLevel
+    ]
     return templates.TemplateResponse(
         request=request,
         name="admin_reward_rates.html",
         context={
             "admin": admin,
-            "advance_amount": await get_stage_rate_amount(session, RewardType.ADVANCE),
-            "main_amount": await get_stage_rate_amount(session, RewardType.MAIN),
+            "advance_amount": await get_stage_rate_amount(
+                session, RewardType.ADVANCE, ADVANCE_LOOKUP_LEVEL
+            ),
+            "main_amounts": main_amounts,
             "csrf_token": csrf_token(request.session),
             "error": error,
         },
@@ -148,25 +170,159 @@ async def reward_rates_submit(
     admin: CurrentAdmin,
     session: Session,
     amount_advance: Annotated[str, Form()],
-    amount_main: Annotated[str, Form()],
+    amount_main_start: Annotated[str, Form()],
+    amount_main_active: Annotated[str, Form()],
+    amount_main_pro: Annotated[str, Form()],
+    amount_main_expert: Annotated[str, Form()],
     csrf: Annotated[str, Form()] = "",
 ):
     if not valid_csrf(request.session, csrf):
         return await reward_rates_page(request, admin, session, error="Обновите страницу")
+    main_by_level = {
+        PartnerLevel.START: amount_main_start,
+        PartnerLevel.ACTIVE: amount_main_active,
+        PartnerLevel.PRO: amount_main_pro,
+        PartnerLevel.EXPERT: amount_main_expert,
+    }
     try:
-        new_values = {
-            RewardType.ADVANCE: Decimal(amount_advance),
-            RewardType.MAIN: Decimal(amount_main),
-        }
+        advance_amount = Decimal(amount_advance)
+        main_amounts = {level: Decimal(raw) for level, raw in main_by_level.items()}
     except InvalidOperation:
         return await reward_rates_page(request, admin, session, error="Укажите корректную сумму")
-    if any(value < 0 for value in new_values.values()):
+    if advance_amount < 0 or any(value < 0 for value in main_amounts.values()):
         return await reward_rates_page(
             request, admin, session, error="Сумма не может быть отрицательной"
         )
-    for reward_type, amount in new_values.items():
-        rate = await session.get(RewardStageRate, reward_type)
-        if rate is not None:
-            rate.amount = amount
+    for level in PartnerLevel:
+        advance_rate = await session.get(RewardStageRate, (RewardType.ADVANCE, level))
+        if advance_rate is not None:
+            advance_rate.amount = advance_amount
+        main_rate = await session.get(RewardStageRate, (RewardType.MAIN, level))
+        if main_rate is not None:
+            main_rate.amount = main_amounts[level]
     await session.commit()
     return RedirectResponse("/admin/reward-rates", status_code=303)
+
+
+@router.get("/admin/partner-levels", response_class=HTMLResponse)
+async def partner_levels_page(
+    request: Request,
+    admin: CurrentAdmin,
+    session: Session,
+    q: str = "",
+    agent_id: int | None = None,
+    error: str = "",
+) -> HTMLResponse:
+    search_results: list[Agent] = []
+    if q.strip():
+        pattern = f"%{q.strip()}%"
+        search_results = list(
+            (
+                await session.scalars(
+                    select(Agent)
+                    .where(or_(Agent.display_name.ilike(pattern), Agent.email.ilike(pattern)))
+                    .order_by(Agent.display_name)
+                    .limit(20)
+                )
+            ).all()
+        )
+
+    selected_agent = await session.get(Agent, agent_id) if agent_id else None
+    level_months: list[PartnerLevelMonth] = []
+    if selected_agent is not None:
+        level_months = list(
+            (
+                await session.scalars(
+                    select(PartnerLevelMonth)
+                    .where(PartnerLevelMonth.agent_id == selected_agent.id)
+                    .order_by(PartnerLevelMonth.year.desc(), PartnerLevelMonth.month.desc())
+                )
+            ).all()
+        )
+
+    today = datetime.now(UTC)
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_partner_levels.html",
+        context={
+            "admin": admin,
+            "q": q,
+            "search_results": search_results,
+            "selected_agent": selected_agent,
+            "level_months": level_months,
+            "levels": list(PartnerLevel),
+            "level_labels": LEVEL_LABELS,
+            "current_year": today.year,
+            "current_month": today.month,
+            "csrf_token": csrf_token(request.session),
+            "error": error,
+        },
+    )
+
+
+@router.post("/admin/partner-levels/set")
+async def partner_levels_set(
+    request: Request,
+    admin: CurrentAdmin,
+    session: Session,
+    agent_id: Annotated[int, Form()],
+    year: Annotated[int, Form()],
+    month: Annotated[int, Form()],
+    level: Annotated[str, Form()],
+    csrf: Annotated[str, Form()] = "",
+):
+    redirect_url = f"/admin/partner-levels?agent_id={agent_id}"
+    if not valid_csrf(request.session, csrf):
+        return RedirectResponse(redirect_url, status_code=303)
+    if level not in {member.value for member in PartnerLevel} or not (1 <= month <= 12):
+        return RedirectResponse(f"{redirect_url}&error=Некорректные данные", status_code=303)
+
+    existing = await session.scalar(
+        select(PartnerLevelMonth).where(
+            PartnerLevelMonth.agent_id == agent_id,
+            PartnerLevelMonth.year == year,
+            PartnerLevelMonth.month == month,
+        )
+    )
+    if existing is None:
+        session.add(
+            PartnerLevelMonth(
+                agent_id=agent_id,
+                year=year,
+                month=month,
+                contracts_count=0,
+                level=PartnerLevel(level),
+                is_manual=True,
+            )
+        )
+    else:
+        existing.level = PartnerLevel(level)
+        existing.is_manual = True
+    await session.commit()
+    return RedirectResponse(redirect_url, status_code=303)
+
+
+@router.post("/admin/partner-levels/reset-to-auto")
+async def partner_levels_reset_to_auto(
+    request: Request,
+    admin: CurrentAdmin,
+    session: Session,
+    agent_id: Annotated[int, Form()],
+    year: Annotated[int, Form()],
+    month: Annotated[int, Form()],
+    csrf: Annotated[str, Form()] = "",
+):
+    redirect_url = f"/admin/partner-levels?agent_id={agent_id}"
+    if not valid_csrf(request.session, csrf):
+        return RedirectResponse(redirect_url, status_code=303)
+    existing = await session.scalar(
+        select(PartnerLevelMonth).where(
+            PartnerLevelMonth.agent_id == agent_id,
+            PartnerLevelMonth.year == year,
+            PartnerLevelMonth.month == month,
+        )
+    )
+    if existing is not None:
+        existing.is_manual = False
+        await session.commit()
+    return RedirectResponse(redirect_url, status_code=303)

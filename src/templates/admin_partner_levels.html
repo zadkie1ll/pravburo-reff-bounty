@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Уровни партнёров · Правбюро{% endblock %}
+{% block content %}
+<section class="card"><p class="eyebrow">Администратор</p><h1>Уровни партнёров</h1>
+<p>Уровень партнёра за месяц считается автоматически 1-го числа следующего месяца по числу заключённых договоров. Здесь можно посмотреть историю и поправить уровень вручную, если автоматика ошиблась — ручная правка защищена от перезаписи следующим автоматическим расчётом.</p>
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+<form method="get" action="/admin/partner-levels">
+<label>Партнёр (имя или почта)<input type="text" name="q" value="{{ q }}" placeholder="Например, Иванов или ivan@example.com"></label>
+<button class="button" type="submit">Найти</button>
+</form>
+{% if search_results %}
+<ul>
+{% for agent in search_results %}
+<li><a href="/admin/partner-levels?agent_id={{ agent.id }}">{{ agent.display_name or agent.email or ('#' ~ agent.id) }}{% if agent.email %} ({{ agent.email }}){% endif %}</a></li>
+{% endfor %}
+</ul>
+{% elif q %}
+<p>Никого не нашли по запросу «{{ q }}».</p>
+{% endif %}
+</section>
+
+{% if selected_agent %}
+<section class="card table-card">
+<h2>{{ selected_agent.display_name or selected_agent.email or ('#' ~ selected_agent.id) }}</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Период</th><th>Договоров</th><th>Уровень</th><th>Откуда</th><th>Изменить уровень</th><th></th></tr></thead>
+<tbody>
+{% for row in level_months %}
+<tr>
+<td>{{ row.month }}.{{ row.year }}</td>
+<td>{{ row.contracts_count }}</td>
+<td>{{ level_labels[row.level] }}</td>
+<td>{{ 'Вручную' if row.is_manual else 'Автоматически' }}</td>
+<td>
+<form method="post" action="/admin/partner-levels/set">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<input type="hidden" name="agent_id" value="{{ selected_agent.id }}">
+<input type="hidden" name="year" value="{{ row.year }}">
+<input type="hidden" name="month" value="{{ row.month }}">
+<select name="level">
+{% for level in levels %}
+<option value="{{ level }}" {% if level == row.level %}selected{% endif %}>{{ level_labels[level] }}</option>
+{% endfor %}
+</select>
+<button class="button" type="submit">Сохранить</button>
+</form>
+</td>
+<td>
+{% if row.is_manual %}
+<form method="post" action="/admin/partner-levels/reset-to-auto">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<input type="hidden" name="agent_id" value="{{ selected_agent.id }}">
+<input type="hidden" name="year" value="{{ row.year }}">
+<input type="hidden" name="month" value="{{ row.month }}">
+<button class="button" type="submit">Вернуть автоматике</button>
+</form>
+{% endif %}
+</td>
+</tr>
+{% else %}
+<tr><td colspan="6">Записей ещё нет — уровень появится после первого закрытия месяца, либо задайте вручную ниже.</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+
+<h3 style="margin-top: 20px">Задать уровень вручную за произвольный месяц</h3>
+<form method="post" action="/admin/partner-levels/set">
+<input type="hidden" name="csrf" value="{{ csrf_token }}">
+<input type="hidden" name="agent_id" value="{{ selected_agent.id }}">
+<label>Год<input type="number" name="year" value="{{ current_year }}" min="2020" max="2100" required></label>
+<label>Месяц<input type="number" name="month" value="{{ current_month }}" min="1" max="12" required></label>
+<label>Уровень<select name="level">
+{% for level in levels %}
+<option value="{{ level }}">{{ level_labels[level] }}</option>
+{% endfor %}
+</select></label>
+<button class="button button-spaced" type="submit">Сохранить</button>
+</form>
+</section>
+{% endif %}
+{% endblock %}
