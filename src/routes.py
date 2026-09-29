@@ -77,7 +77,7 @@ async def rewards_page(request: Request, admin: CurrentAdmin, session: Session) 
     rows = (
         await session.execute(
             select(Reward, ReferralApplication)
-            .join(ReferralApplication, ReferralApplication.id == Reward.application_id)
+            .outerjoin(ReferralApplication, ReferralApplication.id == Reward.application_id)
             .order_by(Reward.created_at.desc())
         )
     ).all()
@@ -90,7 +90,7 @@ async def rewards_page(request: Request, admin: CurrentAdmin, session: Session) 
                 {
                     "reward": reward,
                     "application": application,
-                    "phone": application.phone_normalized,
+                    "phone": application.phone_normalized if application else "—",
                 }
                 for reward, application in rows
             ],

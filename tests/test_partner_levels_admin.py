@@ -153,3 +153,43 @@ def test_partner_levels_reset_to_auto_clears_manual_flag() -> None:
             await _cleanup(agent_id)
 
     _run(scenario())
+
+
+def test_rewards_page_lists_quarterly_bonus_without_application() -> None:
+    from decimal import Decimal
+
+    from pravburo_ref_common.models import Reward, RewardType
+
+    async def scenario() -> None:
+        marker = uuid.uuid4().hex[:8]
+        agent_id = await _make_agent(marker)
+        deal_id = f"quarterly:{agent_id}:2026Q3"
+        async with session_factory() as session:
+            session.add(
+                Reward(
+                    deal_id=deal_id,
+                    application_id=None,
+                    agent_id=agent_id,
+                    reward_type=RewardType.QUARTERLY_BONUS,
+                    amount=Decimal("15000.00"),
+                )
+            )
+            await session.commit()
+
+        app.dependency_overrides[require_admin] = lambda: FAKE_ADMIN
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.get("/admin/rewards")
+            assert response.status_code == 200
+            assert deal_id in response.text
+            assert "Квартальный бонус" in response.text
+        finally:
+            app.dependency_overrides.pop(require_admin, None)
+            async with session_factory() as session:
+                await session.execute(delete(Reward).where(Reward.deal_id == deal_id))
+                await session.commit()
+            await _cleanup(agent_id)
+
+    _run(scenario())
