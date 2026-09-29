@@ -33,7 +33,7 @@ router = APIRouter(tags=["bounty"])
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 Session = Annotated[AsyncSession, Depends(get_session)]
 
-NOTIFIABLE_REWARD_TYPES = {RewardType.ADVANCE, RewardType.MAIN}
+NOTIFIABLE_REWARD_TYPES = {RewardType.ADVANCE, RewardType.MAIN, RewardType.BONUS_FULL_PAYMENT}
 
 # Причины отказа по начислению: админ выбирает из списка, а не пишет текст сам.
 # Выбранный текст сохраняется в Reward.rejection_reason и показывается партнёру.
