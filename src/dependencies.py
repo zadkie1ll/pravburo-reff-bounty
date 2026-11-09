@@ -17,9 +17,16 @@ async def require_agent(
     return agent
 
 
-async def require_admin(agent: Annotated[Agent, Depends(require_agent)]) -> Agent:
+async def require_admin(request: Request, agent: Annotated[Agent, Depends(require_agent)]) -> Agent:
     if agent.role != AgentRole.ADMIN:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    # This service uses the same signed session as the site.
+    if (
+        not agent.is_active
+        or not agent.totp_enabled
+        or (request.session.get("admin_2fa_verified") is not True)
+    ):
+        raise HTTPException(status_code=303, headers={"Location": "/login"})
     return agent
 
 
