@@ -1,0 +1,48 @@
+.page-back { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 28px; }
+.page-back + .hero, .page-back + .card { margin-top: 0; }
+.rewards-heading { margin-bottom: 24px; }
+.reward-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.reward-card { display: flex; flex-direction: column; min-width: 0; padding: 22px; border: 1px solid var(--line); border-radius: 22px; background: #fff; box-shadow: 0 8px 24px rgba(54, 92, 128, .04); overflow-wrap: anywhere; }
+.reward-card-header { display: flex; align-items: flex-start; gap: 12px; }
+.reward-avatar { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border-radius: 14px; background: #edf5ff; color: #3173bd; font-size: 24px; }
+.reward-card-title { min-width: 0; flex: 1; }
+.reward-card-title h2 { margin: 0; font-size: 18px; line-height: 1.4; }
+.reward-card-title p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+.reward-badge { flex-shrink: 0; padding: 5px 8px; border-radius: 8px; font-size: 12px; line-height: 1.4; background: #fff5df; color: #806100; }
+.reward-badge.is-approved, .reward-badge.is-paid { background: #eaf6ee; color: #227443; }
+.reward-badge.is-rejected { background: #ffedef; color: #b83c47; }
+.reward-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 22px 0; padding: 16px; border-radius: 14px; background: #f6f8fb; }
+.reward-card dt, .reward-hint { color: var(--muted); font-size: 13px; }
+.reward-card dd { margin: 4px 0 0; }
+.reward-metrics dd { font-family: "TT Norms Medium", sans-serif; font-size: 22px; }
+.reward-details { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0 0 16px; }
+.reward-disclosure { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; }
+.reward-disclosure summary { cursor: pointer; color: var(--brand); font-size: 14px; min-height: 24px; }
+.reward-disclosure p { margin-bottom: 0; white-space: pre-wrap; }
+.reward-card-footer { margin-top: auto; padding-top: 16px; border-top: 1px solid var(--line); }
+.reward-decision { display: block; }
+.reward-decision label { display: block; font-size: 14px; margin-bottom: 8px; }
+.reward-decision select { width: 100%; min-width: 0; max-width: 100%; margin: 0; font-size: 14px; }
+.reward-hint { margin: 8px 0 16px; }
+.reward-decision-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.reward-action { flex: 1; min-width: 0; min-height: 44px; padding: 10px 14px; border: 1px solid; border-radius: 12px; cursor: pointer; font-family: "TT Norms Medium", sans-serif; font-size: 14px; }
+.reward-action.approve { color: #246b4c; border-color: #c8e7d5; background: #eaf7ef; }
+.reward-action.reject { color: #b83c47; border-color: #f1cbd0; background: #fff1f2; }
+.reward-action:hover { filter: brightness(.97); }
+.reward-action:focus-visible, .reward-disclosure summary:focus-visible { outline: 3px solid #80baff; outline-offset: 3px; }
+.reward-result { margin: 0; color: var(--muted); font-size: 14px; }
+.rewards-empty { grid-column: 1 / -1; }
+@media (max-width: 800px) { .reward-card-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) {
+  .reward-card { padding: 18px; }
+  .reward-card-header { flex-wrap: wrap; }
+  .reward-badge { margin-left: 56px; }
+  .reward-card-title h2 { font-size: 17px; }
+}
+.reward-list-count { color: var(--muted); font-size: 14px; }
+.reward-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; padding: 14px; margin: 20px 0; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.8); }
+.reward-pagination > span { padding: 8px 12px; color: var(--muted); font-size: 14px; }
+@media (max-width: 480px) {
+  .reward-pagination > span { order: -1; flex-basis: 100%; text-align: center; }
+  .reward-pagination a { flex: 1; }
+}

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pravburo_ref_common.contracts import RewardCreate
@@ -19,7 +19,7 @@ from pravburo_ref_common.models import (
     RewardStatus,
     RewardType,
 )
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.dependencies import CurrentAdmin
@@ -73,12 +73,23 @@ async def create_reward(payload: RewardCreate, session: Session) -> dict[str, ob
 
 
 @router.get("/admin/rewards", response_class=HTMLResponse)
-async def rewards_page(request: Request, admin: CurrentAdmin, session: Session) -> HTMLResponse:
+async def rewards_page(
+    request: Request,
+    admin: CurrentAdmin,
+    session: Session,
+    page: Annotated[int, Query(ge=1)] = 1,
+) -> HTMLResponse:
+    page_size = 12
+    total_count = await session.scalar(select(func.count()).select_from(Reward)) or 0
+    total_pages = max(1, (total_count + page_size - 1) // page_size)
+    page = min(page, total_pages)
     rows = (
         await session.execute(
             select(Reward, ReferralApplication)
             .outerjoin(ReferralApplication, ReferralApplication.id == Reward.application_id)
-            .order_by(Reward.created_at.desc())
+            .order_by(Reward.created_at.desc(), Reward.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
     ).all()
     return templates.TemplateResponse(
@@ -86,6 +97,9 @@ async def rewards_page(request: Request, admin: CurrentAdmin, session: Session) 
         name="admin_rewards.html",
         context={
             "admin": admin,
+            "page": page,
+            "total_pages": total_pages,
+            "total_count": total_count,
             "rows": [
                 {
                     "reward": reward,
@@ -109,23 +123,25 @@ async def decide_reward(
     decision: Annotated[str, Form()],
     reason: Annotated[str, Form(max_length=2000)] = "",
     csrf: Annotated[str, Form()] = "",
+    page: Annotated[int, Form(ge=1)] = 1,
 ):
+    return_url = f"/admin/rewards?page={page}" if page > 1 else "/admin/rewards"
     if not valid_csrf(request.session, csrf):
-        return RedirectResponse("/admin/rewards", status_code=303)
+        return RedirectResponse(return_url, status_code=303)
     reward = await session.get(Reward, reward_id, with_for_update=True)
     if reward is None or reward.status != RewardStatus.PENDING:
-        return RedirectResponse("/admin/rewards", status_code=303)
+        return RedirectResponse(return_url, status_code=303)
     if decision == "approve":
         reward.status = RewardStatus.APPROVED
     elif decision == "reject" and reason.strip() in REJECTION_REASONS:
         reward.status = RewardStatus.REJECTED
         reward.rejection_reason = reason.strip()
     else:
-        return RedirectResponse("/admin/rewards", status_code=303)
+        return RedirectResponse(return_url, status_code=303)
     reward.decided_at = datetime.now(UTC)
     reward.decided_by_agent_id = admin.id
     await session.commit()
-    return RedirectResponse("/admin/rewards", status_code=303)
+    return RedirectResponse(return_url, status_code=303)
 
 
 LEVEL_LABELS = {

@@ -1,1 +1,77 @@
-{% extends "base.html" %}{% block title %}Проверка начислений · Правбюро{% endblock %}{% block content %}<section class="hero"><p class="eyebrow">Администратор</p><h1>Начисления</h1><p><a href="/admin/reward-rates">Суммы аванса и основной выплаты →</a></p></section><section class="card table-card"><div class="table-wrap"><table><thead><tr><th>Deal</th><th>Клиент и заявка</th><th>Телефон</th><th>Статус</th><th>Решение</th></tr></thead><tbody>{% for row in rows %}<tr><td>{{ row.reward.deal_id }}</td><td>{% if row.application %}<strong>{{ row.application.full_name }}</strong><br>{{ row.application.city or '—' }} · долг {{ row.application.debt_amount or '—' }}<br>Звонок: {{ row.application.preferred_call_time_msk or '—' }}<br>{{ row.application.situation or 'Без описания' }}{% else %}<strong>Квартальный бонус</strong><br>Не привязан к клиенту — начислен за 15+ договоров за квартал{% endif %}</td><td>{{ row.phone }}</td><td>{{ row.reward.status.value }}</td><td>{% if row.reward.status.value == 'pending' %}<form method="post" action="/admin/rewards/{{ row.reward.id }}/decide"><input type="hidden" name="csrf" value="{{ csrf_token }}"><select name="reason"><option value="">Причина отказа (обязательна при отклонении)</option>{% for reason in rejection_reasons %}<option value="{{ reason }}">{{ reason }}</option>{% endfor %}</select><button class="button" name="decision" value="approve">Одобрить</button><button class="button danger" name="decision" value="reject">Отклонить</button></form>{% else %}{{ row.reward.rejection_reason or 'Решение принято' }}{% endif %}</td></tr>{% else %}<tr><td colspan="5">Начислений нет</td></tr>{% endfor %}</tbody></table></div></section>{% endblock %}
+{% extends "base.html" %}
+{% block title %}Проверка начислений · Правбюро{% endblock %}
+{% macro pagination() %}
+{% if total_pages > 1 %}
+<nav class="reward-pagination" aria-label="Страницы начислений">
+{% if page > 1 %}<a class="nav-link" href="/admin/rewards?page={{ page - 1 }}">← Назад</a>{% endif %}
+<span>Страница {{ page }} из {{ total_pages }}</span>
+{% if page < total_pages %}<a class="nav-link" href="/admin/rewards?page={{ page + 1 }}">Вперёд →</a>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
+{% block content %}
+<nav class="page-back" aria-label="Возврат к разделу"><a class="nav-link" href="/admin?section=payments">← Выплаты</a></nav>
+<section class="hero rewards-heading">
+  <p class="eyebrow">Администратор</p><h1>Начисления</h1>
+  <p>Проверьте начисление и примите решение. Для отклонения выберите причину.</p>
+  <a class="nav-link" href="/admin/reward-rates">Суммы аванса и основной выплаты →</a>
+</section>
+{% set types = {'advance': 'Аванс', 'main': 'Основная выплата', 'bonus_full_payment': 'Бонус за полную оплату', 'quarterly_bonus': 'Квартальный бонус', 'override': 'Вознаграждение по сети'} %}
+{% set statuses = {'pending': 'На проверке', 'approved': 'Одобрено', 'rejected': 'Отклонено'} %}
+<p class="reward-list-count">Всего: {{ total_count }}</p>
+{{ pagination() }}
+<div class="reward-card-grid">
+{% for row in rows %}
+{% set reward = row.reward %}
+<article class="reward-card" aria-labelledby="reward-title-{{ reward.id }}">
+  <header class="reward-card-header">
+    <div class="reward-avatar" aria-hidden="true">₽</div>
+    <div class="reward-card-title">
+      <h2 id="reward-title-{{ reward.id }}">{{ row.application.full_name if row.application else 'Квартальный бонус' }}</h2>
+      <p>{{ types.get(reward.reward_type.value, reward.reward_type.value) }} · #{{ reward.id }}</p>
+    </div>
+    <span class="reward-badge {% if reward.paid_at %}is-paid{% else %}is-{{ reward.status.value }}{% endif %}">{{ 'Выплачено' if reward.paid_at else statuses.get(reward.status.value, reward.status.value) }}</span>
+  </header>
+  <dl class="reward-metrics">
+    <div><dt>Сумма начисления</dt><dd>{{ '{:,.2f}'.format(reward.amount).replace(',', ' ').replace('.', ',') ~ ' ₽' if reward.amount is not none else 'Не указана' }}</dd></div>
+    <div><dt>Партнёр</dt><dd>#{{ reward.agent_id }}</dd></div>
+  </dl>
+  {% if row.application %}
+  <dl class="reward-details">
+    <div><dt>Телефон клиента</dt><dd>{{ row.phone }}</dd></div>
+    <div><dt>Город</dt><dd>{{ row.application.city or 'Не указан' }}</dd></div>
+    <div><dt>Сумма долга</dt><dd>{{ row.application.debt_amount or 'Не указана' }}</dd></div>
+    <div><dt>Время звонка</dt><dd>{{ row.application.preferred_call_time_msk or 'Не указано' }}</dd></div>
+  </dl>
+  <details class="reward-disclosure"><summary>Описание заявки</summary><p>{{ row.application.situation or 'Без описания' }}</p></details>
+  {% else %}
+  <p class="reward-hint">Не привязан к клиенту — начислен за 15+ договоров за квартал.</p>
+  {% endif %}
+  <details class="reward-disclosure"><summary>Данные сделки</summary><p>{{ reward.deal_id }}</p></details>
+  <footer class="reward-card-footer">
+  {% if reward.status.value == 'pending' %}
+    <form class="reward-decision" method="post" action="/admin/rewards/{{ reward.id }}/decide">
+      <input type="hidden" name="page" value="{{ page }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label for="reward-reason-{{ reward.id }}">Причина отклонения</label>
+      <select id="reward-reason-{{ reward.id }}" name="reason" required aria-describedby="reward-help-{{ reward.id }}">
+        <option value="">Выберите причину</option>
+        {% for reason in rejection_reasons %}<option value="{{ reason }}">{{ reason }}</option>{% endfor %}
+      </select>
+      <p id="reward-help-{{ reward.id }}" class="reward-hint">Для одобрения причину выбирать не нужно.</p>
+      <div class="reward-decision-buttons">
+        <button class="reward-action approve" name="decision" value="approve" formnovalidate>Одобрить</button>
+        <button class="reward-action reject" name="decision" value="reject">Отклонить</button>
+      </div>
+    </form>
+  {% else %}
+    <p class="reward-result">{{ reward.rejection_reason or ('Выплата выполнена' if reward.paid_at else 'Начисление одобрено') }}</p>
+  {% endif %}
+  </footer>
+</article>
+{% else %}
+<section class="card rewards-empty"><h2>Начислений пока нет</h2><p>Здесь появятся начисления для проверки.</p></section>
+{% endfor %}
+</div>
+{{ pagination() }}
+{% endblock %}

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Уровни партнёров · Правбюро{% endblock %}
 {% block content %}
+<nav class="page-back" aria-label="Возврат к разделу"><a class="nav-link" href="/admin?section=partners">← Партнёры</a></nav>
 <section class="card"><p class="eyebrow">Администратор</p><h1>Уровни партнёров</h1>
 <p>Уровень партнёра за месяц считается автоматически 1-го числа следующего месяца по числу заключённых договоров. Здесь можно посмотреть историю и поправить уровень вручную, если автоматика ошиблась — ручная правка защищена от перезаписи следующим автоматическим расчётом.</p>
 {% if error %}<div class="alert">{{ error }}</div>{% endif %}
@@ -9,9 +10,9 @@
 <button class="button" type="submit">Найти</button>
 </form>
 {% if search_results %}
-<ul>
+<ul class="partner-search-results">
 {% for agent in search_results %}
-<li><a href="/admin/partner-levels?agent_id={{ agent.id }}">{{ agent.display_name or agent.email or ('#' ~ agent.id) }}{% if agent.email %} ({{ agent.email }}){% endif %}</a></li>
+<li><a class="nav-link" href="/admin/partner-levels?agent_id={{ agent.id }}">{{ agent.display_name or agent.email or ('#' ~ agent.id) }}{% if agent.email %} ({{ agent.email }}){% endif %}</a></li>
 {% endfor %}
 </ul>
 {% elif q %}

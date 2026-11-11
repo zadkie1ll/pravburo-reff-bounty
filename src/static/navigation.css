@@ -1,0 +1,35 @@
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  max-width: 100%;
+  padding: 10px 16px;
+  border: 1px solid #dce5ee;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #365c80;
+  font-family: "TT Norms Medium", "SF Pro Display", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease;
+}
+.nav-link:hover {
+  border-color: #b6d4f7;
+  background: #edf5ff;
+  color: #1674d3;
+  text-decoration: none;
+}
+.nav-link:focus-visible {
+  outline: 3px solid #80baff;
+  outline-offset: 3px;
+}
+
+.partner-search-results { display: grid; gap: 12px; padding: 0; list-style: none; }

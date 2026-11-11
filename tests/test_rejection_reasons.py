@@ -149,3 +149,58 @@ def test_approve_does_not_need_a_reason() -> None:
             await _cleanup(admin.id, partner_id, application_id, reward_id)
 
     _run(scenario())
+
+
+def test_rewards_pagination_is_bounded_and_does_not_repeat_rows() -> None:
+    import re
+
+    async def scenario() -> None:
+        admin, partner_id, application_id, reward_id = await _make_pending_reward()
+        app.dependency_overrides[require_admin] = lambda: admin
+        try:
+            async with session_factory() as session:
+                session.add_all(
+                    [
+                        Reward(
+                            deal_id=f"pagination-{uuid.uuid4()}",
+                            agent_id=partner_id,
+                            application_id=application_id,
+                            reward_type=RewardType.MAIN,
+                            status=RewardStatus.PENDING,
+                        )
+                        for _ in range(13)
+                    ]
+                )
+                await session.commit()
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                first = await client.get("/admin/rewards")
+                second = await client.get("/admin/rewards?page=2")
+                last = await client.get("/admin/rewards?page=999999")
+                invalid = await client.get("/admin/rewards?page=0")
+                decision = await client.post(
+                    f"/admin/rewards/{reward_id}/decide",
+                    data={"decision": "approve", "page": "2", "csrf": _csrf_from(second.text)},
+                )
+                assert decision.status_code == 303
+                assert decision.headers["location"] == "/admin/rewards?page=2"
+
+            def ids(response):
+                return set(re.findall(r'id="reward-title-(\d+)"', response.text))
+
+            assert len(ids(first)) == 12
+            assert ids(second)
+            assert ids(first).isdisjoint(ids(second))
+            assert 1 <= len(ids(last)) <= 12
+            assert first.text.count('aria-label="Страницы начислений"') == 2
+            assert 'name="page" value="2"' in second.text
+            assert invalid.status_code == 422
+        finally:
+            app.dependency_overrides.pop(require_admin, None)
+            async with session_factory() as session:
+                await session.execute(delete(Reward).where(Reward.agent_id == partner_id))
+                await session.commit()
+            await _cleanup(admin.id, partner_id, application_id, reward_id)
+
+    _run(scenario())
