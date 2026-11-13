@@ -25,7 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.dependencies import CurrentAdmin
 from src.internal_auth import require_internal_token
 from src.security import csrf_token, valid_csrf
-from src.service import ADVANCE_LOOKUP_LEVEL, create_reward_once, get_stage_rate_amount
+from src.service import (
+    ADVANCE_LOOKUP_LEVEL,
+    HistoricalRewardSkipped,
+    create_reward_once,
+    get_stage_rate_amount,
+)
 from src.site_client import SiteClient
 
 logger = logging.getLogger(__name__)
@@ -58,6 +63,8 @@ async def create_reward(payload: RewardCreate, session: Session) -> dict[str, ob
             payload.reward_type,
             payload.amount,
         )
+    except HistoricalRewardSkipped:
+        return {"status": "historical_skipped"}
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

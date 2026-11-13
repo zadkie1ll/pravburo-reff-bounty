@@ -5,6 +5,7 @@ from pravburo_ref_common.models import (
     Agent,
     AgentCredential,
     AgentIdentity,
+    ExistingClientImport,
     NetworkOverrideRate,
     PartnerLevel,
     PartnerLevelMonth,
@@ -13,7 +14,7 @@ from pravburo_ref_common.models import (
     RewardStageRate,
     RewardType,
 )
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,57 @@ MOSCOW_TZ = ZoneInfo("Europe/Moscow")
 # docstring) - all 4 level rows hold the same amount, so any one of them works
 # as the lookup key.
 ADVANCE_LOOKUP_LEVEL = PartnerLevel.START
+
+
+class HistoricalRewardSkipped(Exception):
+    """An imported client's snapshot excludes this automatic reward stage."""
+
+
+async def _check_existing_client_import(
+    session: AsyncSession,
+    application: ReferralApplication,
+    deal_id: str,
+    agent_id: int,
+    reward_type: RewardType,
+) -> Reward | None:
+    # Check both keys: querying only the application would allow the imported
+    # deal to be paid again through a different, otherwise valid application.
+    imports = (
+        await session.scalars(
+            select(ExistingClientImport).where(
+                or_(
+                    ExistingClientImport.application_id == application.id,
+                    ExistingClientImport.deal_id == deal_id,
+                )
+            )
+        )
+    ).all()
+    for imported in imports:
+        if (
+            imported.application_id != application.id
+            or imported.deal_id != deal_id
+            or application.bitrix_deal_id != deal_id
+            or application.agent_id != agent_id
+        ):
+            raise ValueError("Imported client attribution does not match")
+
+        if reward_type == RewardType.MAIN and imported.current_reward_id is not None:
+            # The site creates this manual balance as MAIN. A retry must neither
+            # reprice it using stage rates nor create upline rewards for it.
+            current = await session.get(Reward, imported.current_reward_id)
+            if current is None or (
+                current.application_id != application.id
+                or current.deal_id != deal_id
+                or current.agent_id != agent_id
+                or current.reward_type != RewardType.MAIN
+                or current.source_reward_id is not None
+            ):
+                raise ValueError("Imported client current reward does not match")
+            return current
+
+        if reward_type.value in imported.excluded_reward_types:
+            raise HistoricalRewardSkipped()
+    return None
 
 
 async def get_stage_rate_amount(
@@ -40,7 +92,8 @@ async def _origin_month(
     """The (year, month) the contract for this deal was signed in, taken from
     the sibling ADVANCE reward's created_at - MAIN's amount depends on the
     partner's level for that month, not the month MAIN itself is created in
-    (the deposit can be paid much later).
+    (the deposit can be paid much later). If an imported client already earned
+    ADVANCE before transfer, accounting starts in the import's Moscow month.
     """
     signed_at = await session.scalar(
         select(Reward.created_at).where(
@@ -50,7 +103,22 @@ async def _origin_month(
         )
     )
     if signed_at is None:
-        return None
+        imported = await session.scalar(
+            select(ExistingClientImport)
+            .join(
+                ReferralApplication,
+                ReferralApplication.id == ExistingClientImport.application_id,
+            )
+            .where(
+                ExistingClientImport.deal_id == deal_id,
+                ReferralApplication.bitrix_deal_id == deal_id,
+                ReferralApplication.agent_id == agent_id,
+                ExistingClientImport.current_reward_id.is_(None),
+            )
+        )
+        if imported is None or RewardType.ADVANCE.value not in imported.excluded_reward_types:
+            return None
+        signed_at = imported.created_at
     moscow = signed_at.astimezone(MOSCOW_TZ)
     return moscow.year, moscow.month
 
@@ -139,6 +207,11 @@ async def create_reward_once(
     application = await session.get(ReferralApplication, application_id)
     if application is None or application.agent_id != agent_id:
         raise ValueError("Referral attribution not found")
+    current = await _check_existing_client_import(
+        session, application, deal_id, agent_id, reward_type
+    )
+    if current is not None:
+        return current, False
     if reward_type in STAGE_RATE_TYPES:
         amount = await _resolve_stage_amount(session, reward_type, deal_id, agent_id)
     reward = Reward(

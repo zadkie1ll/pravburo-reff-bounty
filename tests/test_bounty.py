@@ -1,5 +1,6 @@
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from fastapi.testclient import TestClient
 from pravburo_ref_common.database import get_session
@@ -143,3 +144,34 @@ def test_internal_reward_endpoint_does_not_notify_for_override(monkeypatch) -> N
 
     assert response.status_code == 200
     assert notified == []
+
+
+def test_internal_reward_endpoint_historical_skip_has_no_id_or_notification(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "internal_service_token", "test-token")
+
+    async def fake_session():
+        yield SimpleNamespace()
+
+    async def skip_reward(*args):
+        raise routes.HistoricalRewardSkipped()
+
+    async def unexpected_notification(*args, **kwargs):
+        raise AssertionError("Historical skips must not notify")
+
+    notify = AsyncMock(side_effect=unexpected_notification)
+    monkeypatch.setattr(routes, "create_reward_once", skip_reward)
+    monkeypatch.setattr(SiteClient, "notify_reward", notify)
+    app.dependency_overrides[get_session] = fake_session
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/internal/rewards",
+                headers={"X-Internal-Token": "test-token"},
+                json={"deal_id": "42", "application_id": 1, "agent_id": 2},
+            )
+    finally:
+        app.dependency_overrides.clear()
+    assert response.status_code == 200
+    assert response.json() == {"status": "historical_skipped"}
+    notify.assert_not_awaited()
