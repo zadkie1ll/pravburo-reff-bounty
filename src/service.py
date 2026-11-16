@@ -43,12 +43,14 @@ async def _check_existing_client_import(
     # deal to be paid again through a different, otherwise valid application.
     imports = (
         await session.scalars(
-            select(ExistingClientImport).where(
+            select(ExistingClientImport)
+            .where(
                 or_(
                     ExistingClientImport.application_id == application.id,
                     ExistingClientImport.deal_id == deal_id,
                 )
             )
+            .with_for_update()
         )
     ).all()
     for imported in imports:
@@ -59,6 +61,10 @@ async def _check_existing_client_import(
             or application.agent_id != agent_id
         ):
             raise ValueError("Imported client attribution does not match")
+
+        if imported.workflow_data is not None:
+            # Explicit admin settlement owns these imports; webhooks cannot replay it.
+            raise HistoricalRewardSkipped()
 
         if reward_type == RewardType.MAIN and imported.current_reward_id is not None:
             # The site creates this manual balance as MAIN. A retry must neither

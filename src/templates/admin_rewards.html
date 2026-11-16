@@ -16,7 +16,7 @@
   <p>Проверьте начисление и примите решение. Для отклонения выберите причину.</p>
   <a class="nav-link" href="/admin/reward-rates">Суммы аванса и основной выплаты →</a>
 </section>
-{% set types = {'advance': 'Аванс', 'main': 'Основная выплата', 'bonus_full_payment': 'Бонус за полную оплату', 'quarterly_bonus': 'Квартальный бонус', 'override': 'Вознаграждение по сети'} %}
+{% set types = {'curator': 'Выплата куратору', 'advance': 'Аванс', 'main': 'Основная выплата', 'bonus_full_payment': 'Бонус за полную оплату', 'quarterly_bonus': 'Квартальный бонус', 'override': 'Вознаграждение по сети'} %}
 {% set statuses = {'pending': 'На проверке', 'approved': 'Одобрено', 'rejected': 'Отклонено'} %}
 <p class="reward-list-count">Всего: {{ total_count }}</p>
 {{ pagination() }}

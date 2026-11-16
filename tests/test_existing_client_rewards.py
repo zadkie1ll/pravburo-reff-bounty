@@ -43,8 +43,11 @@ def context(monkeypatch):
     monkeypatch.setattr(service, "_resolve_stage_amount", stage_amount)
     monkeypatch.setattr(service, "_build_override_rewards", overrides)
     return SimpleNamespace(
-        application=application, imported=imported, session=session,
-        stage_amount=stage_amount, overrides=overrides,
+        application=application,
+        imported=imported,
+        session=session,
+        stage_amount=stage_amount,
+        overrides=overrides,
     )
 
 
@@ -71,8 +74,13 @@ def test_snapshot_excluded_milestones_skip_before_rates_or_writes(context, rewar
 @pytest.mark.parametrize("amount", [Decimal("12345.67"), Decimal("0.00")])
 def test_current_manual_main_is_returned_unchanged_on_repeated_calls(context, amount):
     current = Reward(
-        id=100, application_id=1, deal_id="42", agent_id=2,
-        reward_type=RewardType.MAIN, amount=amount, source_reward_id=None,
+        id=100,
+        application_id=1,
+        deal_id="42",
+        agent_id=2,
+        reward_type=RewardType.MAIN,
+        amount=amount,
+        source_reward_id=None,
     )
     context.imported.current_reward_id = current.id
     context.imported.excluded_reward_types = [RewardType.MAIN.value]
@@ -115,15 +123,23 @@ def test_import_requires_exact_application_deal_and_agent_binding(context, chang
 @pytest.mark.parametrize(
     ("field", "value"),
     [
-        ("application_id", 3), ("deal_id", "43"), ("agent_id", 3),
-        ("reward_type", RewardType.ADVANCE), ("source_reward_id", 99),
+        ("application_id", 3),
+        ("deal_id", "43"),
+        ("agent_id", 3),
+        ("reward_type", RewardType.ADVANCE),
+        ("source_reward_id", 99),
         ("missing", None),
     ],
 )
 def test_invalid_current_reward_cannot_fall_through_to_automatic_creation(context, field, value):
     current = Reward(
-        id=100, application_id=1, deal_id="42", agent_id=2,
-        reward_type=RewardType.MAIN, amount=Decimal("12000"), source_reward_id=None,
+        id=100,
+        application_id=1,
+        deal_id="42",
+        agent_id=2,
+        reward_type=RewardType.MAIN,
+        amount=Decimal("12000"),
+        source_reward_id=None,
     )
     if field == "missing":
         current = None
@@ -193,8 +209,13 @@ def test_real_service_endpoint_skips_history_or_returns_manual_duplicate_without
     context.imported.excluded_reward_types = [RewardType.MAIN.value]
     if manual_balance:
         current = Reward(
-            id=100, application_id=1, deal_id="42", agent_id=2,
-            reward_type=RewardType.MAIN, amount=Decimal("12345.67"), source_reward_id=None,
+            id=100,
+            application_id=1,
+            deal_id="42",
+            agent_id=2,
+            reward_type=RewardType.MAIN,
+            amount=Decimal("12345.67"),
+            source_reward_id=None,
         )
         context.imported.current_reward_id = current.id
         context.session.get.side_effect = lambda model, key: (
@@ -219,9 +240,20 @@ def test_real_service_endpoint_skips_history_or_returns_manual_duplicate_without
     assert response.status_code == 200
     assert response.json() == (
         {"status": "duplicate", "reward_id": 100}
-        if manual_balance else {"status": "historical_skipped"}
+        if manual_balance
+        else {"status": "historical_skipped"}
     )
     if manual_balance:
         assert current.amount == Decimal("12345.67")
     notify.assert_not_awaited()
+    assert_no_creation(context)
+
+
+@pytest.mark.parametrize(
+    "reward_type", [RewardType.ADVANCE, RewardType.MAIN, RewardType.BONUS_FULL_PAYMENT]
+)
+def test_structured_manual_settlements_never_replay_webhook_rewards(context, reward_type):
+    context.imported.workflow_data = {"version": 1, "input": {}, "reward_ids": {}}
+    with pytest.raises(HistoricalRewardSkipped):
+        asyncio.run(create_reward_once(context.session, "42", 1, 2, reward_type))
     assert_no_creation(context)
