@@ -46,3 +46,101 @@
   .reward-pagination > span { order: -1; flex-basis: 100%; text-align: center; }
   .reward-pagination a { flex: 1; }
 }
+
+.list-view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f2f6fb;
+}
+.list-view-toggle[hidden] {
+  display: none;
+}
+.list-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.list-view-toggle button[aria-pressed="true"] {
+  border-color: #d7e7fb;
+  background: #fff;
+  color: #2472bd;
+  box-shadow: 0 2px 6px #2447650a;
+}
+.list-view-toggle button:hover {
+  color: #2472bd;
+}
+.list-view-toggle button:focus-visible {
+  outline: 3px solid #80baff;
+  outline-offset: 2px;
+}
+
+.reward-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.reward-card-grid[data-view="rows"] {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.reward-card-grid[data-view="rows"] .reward-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1.6fr);
+  align-items: start;
+  gap: 12px 18px;
+  border-radius: 14px;
+  padding: 16px 20px;
+}
+.reward-card-grid[data-view="rows"] .reward-card-header {
+  flex-wrap: wrap;
+}
+.reward-card-grid[data-view="rows"] :is(.reward-metrics, .reward-details) {
+  margin: 0;
+  gap: 8px 12px;
+}
+.reward-card-grid[data-view="rows"] .reward-metrics {
+  padding: 8px 10px;
+}
+.reward-card-grid[data-view="rows"] .reward-metrics dd {
+  font-size: 16px;
+}
+.reward-card-grid[data-view="rows"] :is(.reward-disclosure, .reward-card-footer, .reward-empty-details) {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.reward-card-grid[data-view="rows"] .reward-decision {
+  max-width: 440px;
+}
+@media (max-width: 800px) {
+  .reward-card-grid[data-view="rows"] .reward-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .reward-card-grid[data-view="rows"] .reward-details {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 480px) {
+  .reward-card-grid[data-view="rows"] .reward-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 14px;
+  }
+  .reward-card-grid[data-view="rows"] .reward-badge {
+    margin-left: 0;
+  }
+}

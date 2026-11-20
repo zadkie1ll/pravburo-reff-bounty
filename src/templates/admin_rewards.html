@@ -18,9 +18,23 @@
 </section>
 {% set types = {'curator': 'Выплата куратору', 'advance': 'Аванс', 'main': 'Основная выплата', 'bonus_full_payment': 'Бонус за полную оплату', 'quarterly_bonus': 'Квартальный бонус', 'override': 'Вознаграждение по сети'} %}
 {% set statuses = {'pending': 'На проверке', 'approved': 'Одобрено', 'rejected': 'Отклонено'} %}
-<p class="reward-list-count">Всего: {{ total_count }}</p>
 {{ pagination() }}
-<div class="reward-card-grid">
+<div class="reward-list-toolbar">
+  <p class="reward-list-count">Всего: {{ total_count }}</p>
+  {% if rows %}
+  <div class="list-view-toggle" role="group" aria-label="Вид списка" hidden>
+    <button type="button" data-list-mode="cards" aria-pressed="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"/></svg>
+      Карточки
+    </button>
+    <button type="button" data-list-mode="rows" aria-pressed="false">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M3 4h18v5H3z M3 15h18v5H3z"/></svg>
+      Строки
+    </button>
+  </div>
+  {% endif %}
+</div>
+<div class="reward-card-grid" data-view="cards">
 {% for row in rows %}
 {% set reward = row.reward %}
 <article class="reward-card" aria-labelledby="reward-title-{{ reward.id }}">
@@ -45,7 +59,7 @@
   </dl>
   <details class="reward-disclosure"><summary>Описание заявки</summary><p>{{ row.application.situation or 'Без описания' }}</p></details>
   {% else %}
-  <p class="reward-hint">Не привязан к клиенту — начислен за 15+ договоров за квартал.</p>
+  <p class="reward-hint reward-empty-details">Не привязан к клиенту — начислен за 15+ договоров за квартал.</p>
   {% endif %}
   <details class="reward-disclosure"><summary>Данные сделки</summary><p>{{ reward.deal_id }}</p></details>
   <footer class="reward-card-footer">
